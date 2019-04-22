@@ -1,0 +1,8 @@
+com\stockprice\processor\StockPriceRecordProcessor.class
+com\stockprice\processor\StockPriceRecordProcessorFactory.class
+com\stockprice\model\StockPrice.class
+com\stockprice\writer\StockPriceGenerator.class
+com\stockprice\utils\ConfigurationUtils.class
+com\stockprice\writer\StockPriceWriter.class
+com\stockprice\processor\StockPriceProcessor.class
+com\stockprice\utils\CredentialUtils.class
