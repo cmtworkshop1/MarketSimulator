@@ -22,7 +22,7 @@ public class StockPriceGenerator {
     {
     	r = rate;
     	vol = volatility;
-    	dt = 1.0/250.0;
+    	dt = 1.0/(250.0*9*60*60);
         a = (r - (0.5*Math.pow(vol, 2)))*dt;
         b = vol*Math.sqrt(dt);
         

@@ -76,12 +76,12 @@ public class StockPriceRecordProcessor implements IRecordProcessor {
 
     private void processRecord(Record record) {
         // TODO: Implement method
-    	StockPrice stockprice = StockPrice.fromJsonAsBytes(record.getData().array());
-    	if (stockprice == null) {
+    	String underLier = record.getData().array().toString();
+    	if (underLier == null) {
     	    LOG.warn("Skipping record. Unable to parse record into StockTrade. Partition Key: " + record.getPartitionKey());
     	    return;
     	}
-    	System.out.println("price is "+stockprice.getPrice());
+    	System.out.println("price is "+underLier);
     }
 
     /**

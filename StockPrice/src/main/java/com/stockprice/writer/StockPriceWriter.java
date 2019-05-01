@@ -2,6 +2,7 @@ package com.stockprice.writer;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.text.DecimalFormat;
 import java.util.Map;
 
 import org.apache.commons.logging.Log;
@@ -23,12 +24,14 @@ import com.stockprice.utils.CredentialUtils;
 import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisCluster;
-import com.fasterxml.jackson.databind.ObjectMapper;
+
 
 
 public class StockPriceWriter {
 
     private static final Log LOG = LogFactory.getLog(StockPriceWriter.class);
+    
+    private static final DecimalFormat df = new DecimalFormat("###.##");
 
     private static void checkUsage(String[] args) {
         if (args.length != 7) {
@@ -58,23 +61,24 @@ public class StockPriceWriter {
     }
 
 
-    private static void sendStockPrice(StockPrice stockprice, AmazonKinesis kinesisClient,
+    private static void sendStockPrice(String underLier, AmazonKinesis kinesisClient,
             String streamName) {
-    	byte[] bytes = stockprice.toJsonAsBytes();
+    	byte[] bytes = underLier.getBytes();
         // The bytes could be null if there is an issue with the JSON serialization by the Jackson JSON library.
         if (bytes == null) {
             LOG.warn("Could not get JSON bytes for stock trade");
             return;
         }
         
-        LOG.info("Putting stock: " + stockprice.toString());
+        LOG.info("Putting stock: " + underLier);
         PutRecordRequest putRecord = new PutRecordRequest();
         putRecord.setStreamName(streamName);
-        putRecord.setPartitionKey(stockprice.getTickerSymbol());
+        putRecord.setPartitionKey(underLier);
         putRecord.setData(ByteBuffer.wrap(bytes));
 
         try {
             kinesisClient.putRecord(putRecord);
+
         } catch (AmazonClientException ex) {
             LOG.warn("Error sending record to Amazon Kinesis.", ex);
         }
@@ -109,9 +113,7 @@ public class StockPriceWriter {
         
         System.out.println("region:streamName:underLier-->"+region+":"+streamName+":"+underLier);
         
-
-        ObjectMapper mapper = new ObjectMapper();
-        
+    
         AWSCredentials credentials = CredentialUtils.getCredentialsProvider().getCredentials();
 
         AmazonKinesis kinesisClient = new AmazonKinesisClient(credentials,
@@ -125,7 +127,7 @@ public class StockPriceWriter {
         
         double lastPrice = 0;
         if(spot_price==null)
-        	spot_price = "100";
+        	spot_price = "100.00";
         
         if(vol==null)
         	vol = "0.4";
@@ -134,51 +136,37 @@ public class StockPriceWriter {
         	interestRate = "0.02";  
         
         jedisCluster.select(3);
-        String fields = jedisCluster.get(underLier);
-        System.out.println("vol spot before: "+fields);
-        Map<String, String> mapSV = mapper.readValue(fields, Map.class);
-        mapSV.put("spot_price", spot_price);
-        mapSV.put("vol", vol);
-        String json = mapper.writeValueAsString(mapSV);
-        jedisCluster.set(underLier, json);
-        fields = jedisCluster.get(underLier);
-        System.out.println("vol spot after: "+fields);  
-        
-		jedisCluster.select(4);
-		fields = jedisCluster.get(underLier);//.02
-		System.out.println("interest rate before: "+fields);        
-		Map<String, String> mapI = mapper.readValue(fields, Map.class);
-		mapI.put("interest_rate", interestRate);
-		json = mapper.writeValueAsString(mapI);
-        jedisCluster.set(underLier, json);
-        fields = jedisCluster.get(underLier);
-        System.out.println("interest rate after: "+fields);  
-        
-		System.out.println("spot_price:vol:interestRate-->"+spot_price+":"+vol+":"+interestRate);
+        jedisCluster.hset(underLier, "spot_price",spot_price);
+        jedisCluster.hset(underLier, "vol", vol);
 
+     
+		jedisCluster.select(4);
+     	jedisCluster.hset(underLier,"interest_rate", interestRate);
+     	sendStockPrice(underLier, kinesisClient, streamName);
         
+		System.out.println("spot_price:vol:interestRate--> before loop"+spot_price+":"+vol+":"+interestRate);
 
         StockPriceGenerator stockPriceGenerator = new StockPriceGenerator(Double.valueOf(vol), Double.valueOf(interestRate),underLier,Double.valueOf(spot_price));
         
-        jedisCluster.select(3);
-
-        
+       
         while(true) {
-        	
+        	Thread.sleep(1000);
             StockPrice stockprice = stockPriceGenerator.getRandomPrice();
-            sendStockPrice(stockprice, kinesisClient, streamName);
-            Thread.sleep(1000);
             lastPrice = stockprice.getPrice();
-
-            fields = jedisCluster.get(underLier);
-            mapSV = mapper.readValue(fields, Map.class);
-            mapSV.put("spot_price", String.valueOf(lastPrice));
-            json = mapper.writeValueAsString(mapSV);
-            jedisCluster.set(underLier, json);
-            fields = jedisCluster.get(underLier);
-            System.out.println("vol spot in loop: "+fields);              
-
+            
+            jedisCluster.select(3);
+            jedisCluster.hset(underLier, "spot_price", df.format(lastPrice));
+            spot_price = jedisCluster.hget(underLier, "spot_price");
+            vol = jedisCluster.hget(underLier, "vol");
+         
+    		jedisCluster.select(4);
+    		interestRate = jedisCluster.hget(underLier,"interest_rate");
+         	
+    		sendStockPrice(underLier, kinesisClient, streamName);
+            System.out.println("spot_price:vol:interestRate--> after loop"+spot_price+":"+vol+":"+interestRate);
+            
         }
+        
     }
 
 }
